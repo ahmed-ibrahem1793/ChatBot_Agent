@@ -1,6 +1,5 @@
 from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 from langchain_core.prompts import ChatPromptTemplate
-from chroma_injection import vectorstore
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from tools import tools, tools_by_name
@@ -12,16 +11,25 @@ groq_api_key = os.getenv("GROQ_API_KEY")
 
 llm = ChatGroq(model="openai/gpt-oss-120b").bind_tools(tools)
 
-def chat(user_message: str, retrieved_context: str):
-    system_prompt = f"""You are a customer service assistant.
-        Use the RETRIEVED CONTEXT as your primary source. If it doesn't answer the
-        question, use web_search then web_fetch_jina. Use get_order_state only for
-        order-status questions, and ask for user_id if missing.
+def chat(user_message: str):
+    SYSTEM_PROMPT = """You are a customer service assistant with four tools. Follow this decision order strictly:
 
-        RETRIEVED CONTEXT:
-        {retrieved_context}"""
+        1. retrieve_context — ALWAYS call this first for any question about products, policies, procedures, pricing, or company info. Never answer such questions from memory, even if you think you know the answer.
 
-    messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_message)]
+        2. If retrieve_context returns "No relevant context found" or the info is clearly insufficient, THEN call web_search, followed by web_fetch_jina on the most relevant result, to find current external information (e.g. exchange rates, live news, general facts outside company knowledge).
+
+        3. get_order_state — ONLY call this when the user asks about their own order/account status. Never call it speculatively. If you don't have their user_id, ask for it instead of calling the tool.
+
+        4. For simple greetings, chit-chat, or math/logic questions unrelated to the business or the user's account, answer directly without calling any tool.
+
+        Rules:
+        - Never call retrieve_context and web_search in the same turn unless retrieve_context came back empty.
+        - Never fabricate order status, prices, or policy details — always retrieve or search first.
+        - If a tool returns no useful result, say so honestly rather than guessing.
+        - Keep answers short and direct. Cite web sources briefly by name when used.
+        """
+
+    messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_message)]
     response = llm.invoke(messages)
 
     while response.tool_calls:
@@ -34,17 +42,9 @@ def chat(user_message: str, retrieved_context: str):
     return response.content
 
 while True:
-    user_input = input("You: ")
-    if user_input.lower() in ["exit", "quit"]:
+    query = input("You: ")
+    if query.lower() in ["exit", "quit"]:
         break
-    
-    query = user_input
-    results = vectorstore.similarity_search(query, k=1)
-    top_result = results[0].page_content if results else "No relevant context found."
-    print(chat(query, top_result))
-# query = "Is my order active?"
-# results = vectorstore.similarity_search(query, k=1)
-# top_result = results[0].page_content if results else "No relevant context found."
+    print(chat(query))
 
-# print(chat(query, top_result))
 

@@ -35,5 +35,12 @@ def get_order_state(user_id: str):
             row = cur.fetchone()
     return {"order_state": row[0]} if row else {"error": "user not found"}
 
-tools = [web_search, web_fetch_jina, get_order_state]
+@tool
+def retrieve_context(query: str):
+    """Retrieve relevant context from the vectorstore."""
+    from chroma_injection import vectorstore
+    results = vectorstore.similarity_search(query, k=1)
+    return results[0].page_content if results else "No relevant context found."
+
+tools = [web_search, web_fetch_jina, get_order_state, retrieve_context]
 tools_by_name = {t.name: t for t in tools}

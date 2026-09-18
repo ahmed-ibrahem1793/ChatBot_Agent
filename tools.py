@@ -9,8 +9,6 @@ db_name = os.getenv("DB_NAME")
 db_user = os.getenv("DB_USER")
 db_password = os.getenv("DB_PASSWORD")
 
-
-
 @tool
 def web_search(query: str, max_results: int = 5):
     """Search the web for up-to-date information not in the knowledge base."""

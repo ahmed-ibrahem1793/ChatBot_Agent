@@ -2,6 +2,7 @@ import requests, os
 import psycopg
 from ddgs import DDGS
 from dotenv import load_dotenv
+from chroma_injection import vectorstore
 from langchain_core.tools import tool
 
 load_dotenv()  
@@ -42,5 +43,20 @@ def retrieve_context(query: str):
     results = vectorstore.similarity_search(query, k=1)
     return results[0].page_content if results else "No relevant context found."
 
-tools = [web_search, web_fetch_jina, get_order_state, retrieve_context]
+@tool
+def save_long_term_fact(user_pass: str, fact: str):
+    """Save an important fact about the user for future conversations,
+    e.g. preferences, contact info, or details they explicitly ask you to remember."""
+    vectorstore.add_texts([fact], metadatas=[{"user_pass": user_pass, "type": "memory"}])
+    return "Saved."
+
+@tool
+def get_long_term_facts(user_pass: str, query: str, k=3):
+    """Retrieve important facts about the user for context in conversations."""
+    docs = vectorstore.similarity_search(
+        query, k=k, filter={"$and": [{"user_pass": user_pass}, {"type": "memory"}]}
+    )
+    return "\n".join(d.page_content for d in docs)
+
+tools = [web_search, web_fetch_jina, get_order_state, retrieve_context, save_long_term_fact, get_long_term_facts]
 tools_by_name = {t.name: t for t in tools}

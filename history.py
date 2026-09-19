@@ -2,6 +2,9 @@ import os
 import psycopg
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, AIMessage
+import hashlib
+from langchain_chroma import Chroma
+from chroma_injection import embedding_model
 
 load_dotenv()
 DB = dict(
@@ -10,6 +13,12 @@ DB = dict(
     user=os.getenv("DB_USER"),
     password=os.getenv("DB_PASSWORD"),
     port=5432,
+)
+
+memory_store = Chroma(
+    collection_name="user_memories",
+    embedding_function=embedding_model,
+    persist_directory="./chroma_db",
 )
 
 def init_memory_tables():
@@ -23,14 +32,6 @@ def init_memory_tables():
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             );
             CREATE INDEX IF NOT EXISTS idx_chat_user ON chat_messages (user_pass, id DESC);
-
-            CREATE TABLE IF NOT EXISTS user_memories (
-                id BIGSERIAL PRIMARY KEY,
-                user_pass VARCHAR(64) NOT NULL,
-                fact TEXT NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                UNIQUE (user_pass, fact)
-            );
         """)
 
 init_memory_tables()
@@ -61,21 +62,15 @@ def save_exchange(user_pass: str, user_text: str, ai_text: str):
             (user_pass, user_text, user_pass, ai_text),
         )
 
-def get_memories(user_pass: str, limit: int = 25):
-    with psycopg.connect(**DB) as conn:
-        rows = conn.execute(
-            "SELECT fact FROM user_memories WHERE user_pass = %s ORDER BY id DESC LIMIT %s;",
-            (user_pass, limit),
-        ).fetchall()
-    return [r[0] for r in rows]
+def get_memories(user_pass: str, query: str, k: int = 5):
+    docs = memory_store.similarity_search(query, k=k, filter={"user_pass": user_pass})
+    return [d.page_content for d in docs]
 
 def add_memories(user_pass: str, facts: list[str]):
-    facts = [f.strip() for f in facts if f and f.strip()]
-    if not facts:
-        return
-    with psycopg.connect(**DB) as conn:
-        with conn.cursor() as cur:
-            cur.executemany(
-                "INSERT INTO user_memories (user_pass, fact) VALUES (%s, %s) ON CONFLICT (user_pass, fact) DO NOTHING;",
-                [(user_pass, f) for f in facts],
-            )
+    for fact in {f.strip() for f in facts if f and f.strip()}:
+        # skip near-duplicates ("owns a TechNest X" vs "has a TechNest X")
+        hits = memory_store.similarity_search_with_score(fact, k=1, filter={"user_pass": user_pass})
+        if hits and hits[0][1] < 0.25:      # score = distance, lower = more similar
+            continue
+        fact_id = hashlib.sha256(f"{user_pass}:{fact.lower()}".encode()).hexdigest()
+        memory_store.add_texts([fact], metadatas=[{"user_pass": user_pass}], ids=[fact_id])

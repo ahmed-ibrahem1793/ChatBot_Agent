@@ -33,7 +33,7 @@ llm = ChatGroq(model="openai/gpt-oss-120b").bind_tools(tools)
 
 def update_long_term_memory(user_pass: str, user_message: str, ai_reply: str):
     try:
-        known = "\n".join(get_memories(user_pass)) or "none"
+        known = "\n".join(get_memories(user_pass, user_message)) or "none"
         out = extractor.invoke([
             SystemMessage(content=EXTRACT_PROMPT.format(known=known)),
             HumanMessage(content=f"USER: {user_message}\nASSISTANT: {ai_reply}"),
@@ -44,7 +44,7 @@ def update_long_term_memory(user_pass: str, user_message: str, ai_reply: str):
 
 def chat(user_pass: str, user_message: str):
     history = get_session_history(user_pass)
-    memories = get_memories(user_pass)
+    memories = get_memories(user_pass, user_message)
     long_term = "\n".join(f"- {m}" for m in memories) or "Nothing stored yet."
 
 

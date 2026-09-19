@@ -1,4 +1,4 @@
-# TechNest Support Bot
+# TechNest ChatBot Agent
 
 A customer-support chatbot for a fictional electronics retailer, TechNest. It answers questions from a company handbook (RAG), checks order status in a database, searches the web when the handbook has no answer, and remembers things about each user across conversations.
 

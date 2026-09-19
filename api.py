@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Depends, Header
 from pydantic import BaseModel
 from LLM import chat
-from history import memory_store, sessions
+import psycopg
+from history import memory_store, sessions, DB
 
 app = FastAPI(title="TechNest Support Bot")
 
@@ -24,7 +25,10 @@ def list_memories(user_pass: str = Depends(current_user)):
 
 @app.delete("/memories")
 def delete_memories(user_pass: str = Depends(current_user)):
-    memory_store._collection.delete(where={"user_pass": user_pass})
+    memory_store._collection.delete(where={"user_pass": user_pass})   # long-term memories (Chroma)
+    with psycopg.connect(**DB) as conn:                               # chat history (PostgreSQL)
+        conn.execute("DELETE FROM chat_messages WHERE user_pass = %s;", (user_pass,))
+    sessions.pop(user_pass, None)                                     # in-memory cache
     return {"deleted": True}
 
 @app.post("/reset")

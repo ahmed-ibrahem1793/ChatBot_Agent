@@ -68,15 +68,15 @@ def load_memories(user_pass):
     return "\n".join(f"- {m}" for m in memories) or "No memories stored yet."
 
 
-def delete_memories(user_pass):
+def delete_everything(user_pass):
     if not has_password(user_pass):
-        return "", "Enter your user password first."
+        return gr.update(), "Enter your user password first.", gr.update()
     try:
         r = requests.delete(f"{API_URL}/memories", headers=auth_headers(user_pass), timeout=30)
         r.raise_for_status()
     except requests.exceptions.RequestException as e:
-        return gr.update(), f"Couldn't delete memories: {e}"
-    return "No memories stored yet.", "All memories deleted."
+        return gr.update(), f"Couldn't delete: {e}", gr.update()
+    return "No memories stored yet.", "Memories and chat history deleted.", []
 
 
 # ---------- Layout ----------
@@ -87,7 +87,18 @@ try:
 except TypeError:
     chatbot = gr.Chatbot(height=480, label="Conversation")
 
-with gr.Blocks(title="TechNest Support Bot") as demo:
+theme = gr.themes.Soft(primary_hue="sky", neutral_hue="slate").set(
+    body_background_fill="#f8fafc",
+    block_background_fill="#ffffff",
+    block_border_color="#e2e8f0",
+    button_primary_background_fill="#0284c7",
+    button_primary_background_fill_hover="#0369a1",
+    button_primary_text_color="#ffffff",
+)
+
+IS_GRADIO_6 = int(gr.__version__.split(".")[0]) >= 6
+
+with gr.Blocks(title="TechNest Support Bot", **({} if IS_GRADIO_6 else {"theme": theme})) as demo:
     gr.Markdown("# TechNest Support Bot")
 
     with gr.Row():
@@ -103,7 +114,7 @@ with gr.Blocks(title="TechNest Support Bot") as demo:
                 clear_btn = gr.Button("Clear screen")
 
         with gr.Column(scale=1):
-            user_pass = gr.Textbox(label="User password", type="password", placeholder="e.g. chroma_test")
+            user_pass = gr.Textbox(label="User password", type="password", placeholder="e.g. 123")
             gr.Markdown("### Long-term memory")
             memories_box = gr.Textbox(label="Stored facts", lines=10, interactive=False)
             with gr.Row():
@@ -118,7 +129,8 @@ with gr.Blocks(title="TechNest Support Bot") as demo:
 
     # memory events
     refresh_btn.click(load_memories, user_pass, memories_box)
-    delete_btn.click(delete_memories, user_pass, [memories_box, status])
+    delete_btn.click(delete_everything, user_pass, [memories_box, status, chatbot])
 
 if __name__ == "__main__":
-    demo.launch()   # opens at http://127.0.0.1:7860
+    # share=True creates a PUBLIC link (see warning); use demo.launch(...) without it to stay local
+    demo.launch(**({"theme": theme} if IS_GRADIO_6 else {}), share=True)
